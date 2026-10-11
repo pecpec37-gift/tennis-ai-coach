@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>テニスAIコーチ 試作版</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --court:#1E4D8C; --court-d:#163A6B; --outer:#2F6B4F;
+  --ball:#DDF03A; --ink:#0F1E33; --mist:#EDF1F6; --line:#fff;
+  --warn:#C2410C; --good:#15803D;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:"Zen Kaku Gothic New",system-ui,sans-serif;background:var(--mist);color:var(--ink);line-height:1.7;-webkit-text-size-adjust:100%}
+a{color:inherit}
+button,select,input{font:inherit}
+:focus-visible{outline:3px solid var(--ball);outline-offset:2px}
+
+/* ヘッダー：コートの青＋白いベースライン */
+header{background:var(--court);color:#fff;padding:12px 16px 14px;border-bottom:4px solid var(--line);position:relative}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.back{font-size:.85rem;text-decoration:none;opacity:.9;padding:4px 10px;border:1px solid rgba(255,255,255,.5);border-radius:999px}
+.gear{background:none;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:999px;padding:4px 12px;font-size:.85rem;cursor:pointer}
+h1{font-size:1.45rem;font-weight:900;margin:10px 0 0;letter-spacing:.02em}
+h1 small{display:block;font-size:.8rem;font-weight:400;opacity:.85}
+nav{display:flex;background:var(--court-d)}
+nav button{flex:1;background:none;border:none;color:#cfe0f5;padding:12px;font-weight:700;cursor:pointer;border-bottom:3px solid transparent}
+nav button[aria-selected="true"]{color:#fff;border-bottom-color:var(--ball)}
+
+main{max-width:640px;margin:0 auto;padding:16px 14px 60px}
+section[hidden]{display:none}
+.panel{background:#fff;border-radius:14px;padding:16px;margin-bottom:14px}
+h2{font-size:1.05rem;margin:0 0 10px}
+
+/* ステップ（実際の順序なので番号付き） */
+.steps{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:14px;list-style:none;padding:0}
+.steps li{text-align:center;font-size:.68rem;line-height:1.3;padding:6px 2px;border-radius:8px;background:#fff;color:#6b7a90}
+.steps li b{display:block;font-family:Oswald,sans-serif;font-size:1rem;color:#9aa7b8}
+.steps li.on{background:var(--court);color:#fff}
+.steps li.on b{color:var(--ball)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:999px;padding:12px 20px;font-weight:700;cursor:pointer;font-size:1rem}
+.btn.primary{background:var(--court);color:#fff;width:100%}
+.btn.ball{background:var(--ball);color:var(--ink);width:100%;font-size:1.1rem;padding:15px}
+.btn.ghost{background:var(--mist);color:var(--ink);padding:8px 14px;font-size:.85rem}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+input[type=file]{position:absolute;opacity:0;width:1px;height:1px}
+
+video{width:100%;max-height:52vh;background:#000;border-radius:10px;display:block}
+.scrub{width:100%;margin:10px 0 4px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row .btn.ghost{flex:1}
+.time{font-family:Oswald,sans-serif;font-size:.95rem}
+.seg{background:var(--mist);border-radius:8px;padding:8px 10px;font-size:.88rem;margin:8px 0}
+.seg b{font-family:Oswald,sans-serif}
+label.f{display:block;font-size:.85rem;font-weight:700;margin:10px 0 4px}
+select{width:100%;padding:10px;border-radius:10px;border:1px solid #c9d3e0;background:#fff}
+.hint{font-size:.82rem;color:#55657c;margin:6px 0 0}
+
+.status{padding:12px 14px;border-radius:10px;background:var(--court);color:#fff;font-weight:700;margin-bottom:14px}
+.status.err{background:var(--warn)}
+.status .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ball);margin-right:8px;animation:bounce .8s infinite alternate}
+@keyframes bounce{to{transform:translateY(-6px)}}
+@media (prefers-reduced-motion:reduce){.status .dot{animation:none}}
+
+.frames{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px}
+.frames img{height:72px;border-radius:6px;flex:none}
+
+/* スコアボード：このアプリで唯一の"派手な"要素 */
+.board{background:var(--ink);color:#fff;border-radius:14px;padding:18px 16px;text-align:center;border:3px solid #24344d}
+.board .lbl{font-size:.85rem;color:#a9b7cc}
+.board .num{font-family:Oswald,sans-serif;font-weight:700;font-size:5rem;line-height:1;color:var(--ball);letter-spacing:.02em}
+.board .num span{font-size:1.6rem;color:#a9b7cc}
+.board .diff{font-family:Oswald,sans-serif;font-size:1.05rem;margin-top:6px}
+.up{color:#4ade80}.down{color:#fb923c}.same{color:#a9b7cc}
+.board .sum{font-size:.92rem;margin-top:10px;text-align:left;color:#e3ebf5}
+
+.radar{display:block;margin:0 auto;max-width:340px;width:100%}
+.legend{display:flex;justify-content:center;gap:16px;font-size:.8rem;color:#55657c}
+.legend i{display:inline-block;width:14px;height:4px;vertical-align:middle;margin-right:4px}
+
+.item{padding:10px 0;border-bottom:1px solid #e3e9f1}
+.item:last-child{border-bottom:none}
+.item .h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.item .nm{font-weight:700}
+.item .sc{font-family:Oswald,sans-serif;font-size:1.25rem}
+.item .sc small{font-size:.8rem;margin-left:4px}
+.bar{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;margin:4px 0}
+.bar i{height:7px;background:#e3e9f1;border-radius:2px}
+.bar i.f{background:var(--court)}
+.item p{margin:2px 0 0;font-size:.88rem;color:#3c4b61}
+
+.imp{border-left:5px solid var(--ball);background:#f8fbe6;border-radius:0 10px 10px 0;padding:10px 12px;margin-bottom:10px}
+.imp h3{margin:0;font-size:1rem}
+.imp h3 em{font-style:normal;font-family:Oswald,sans-serif;color:var(--court);margin-right:6px}
+.imp p{margin:4px 0 0;font-size:.9rem}
+.imp .drill{font-size:.85rem;color:var(--outer);font-weight:700}
+
+.verdict{display:inline-block;padding:4px 14px;border-radius:999px;font-weight:900;color:#fff;margin-bottom:6px}
+.v-up{background:var(--good)}.v-flat{background:#64748b}.v-down{background:var(--warn)}
+.chk{font-size:.88rem;margin:4px 0}
+
+.theme{background:var(--outer);color:#fff;border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.theme h2{color:var(--ball);font-size:.95rem;margin-bottom:6px}
+.theme ol{margin:0;padding-left:1.3em;font-size:.92rem}
+
+.hist{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #e3e9f1;cursor:pointer}
+.hist img{width:64px;height:48px;object-fit:cover;border-radius:6px;background:#ccd}
+.hist .meta{flex:1;font-size:.85rem}
+.hist .tot{font-family:Oswald,sans-serif;font-size:1.6rem;color:var(--court)}
+.del{background:none;border:none;color:#94a3b8;font-size:1.1rem;cursor:pointer;padding:6px}
+
+dialog{border:none;border-radius:14px;padding:18px;max-width:92vw;width:420px}
+dialog::backdrop{background:rgba(15,30,51,.6)}
+dialog input{width:100%;padding:10px;border:1px solid #c9d3e0;border-radius:10px}
+.empty{color:#55657c;font-size:.92rem;text-align:center;padding:20px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <a class="back" href="https://pecpec37-gift.github.io/portal/">← Tommy-Go</a>
+    <button class="gear" id="gearBtn" hidden>⚙ APIキー</button>
+  </div>
+  <h1>テニスAIコーチ<small>フォアハンド動画をAIが10項目で採点します（試作版）</small></h1>
+</header>
+<nav role="tablist">
+  <button role="tab" aria-selected="true" data-tab="analyze">分析する</button>
+  <button role="tab" aria-selected="false" data-tab="history">記録と上達</button>
+</nav>
+
+<main>
+<section id="tab-analyze">
+  <ol class="steps" id="steps">
+    <li><b>1</b>動画を見せる</li><li><b>2</b>10項目採点</li><li><b>3</b>改善点3つ</li>
+    <li><b>4</b>練習する</li><li><b>5</b>再撮影</li><li><b>6</b>上達判定</li>
+  </ol>
+
+  <div class="theme" id="theme" hidden></div>
+
+  <div class="panel">
+    <h2>フォアハンド動画を選ぶ</h2>
+    <label class="btn primary" for="file">🎾 動画を選ぶ・撮影する</label>
+    <input type="file" id="file" accept="video/*">
+    <p class="hint">真横から全身が入るように撮ると精度が上がります。1球分（数秒）の動画が最適です。</p>
+  </div>
+
+  <div class="panel" id="editor" hidden>
+    <h2>スイング部分を指定</h2>
+    <video id="video" playsinline muted controls preload="auto"></video>
+    <input type="range" class="scrub" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="再生位置">
+    <div class="row">
+      <button class="btn ghost" id="back1">◀ 0.1秒</button>
+      <span class="time" id="tnow">0.00s</span>
+      <button class="btn ghost" id="fwd1">0.1秒 ▶</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn ghost" id="setStart">ここをテイクバック開始に</button>
+      <button class="btn ghost" id="setEnd">ここをフォロー終わりに</button>
+    </div>
+    <div class="seg" id="segInfo"></div>
+
+    <label class="f" for="hand">利き手</label>
+    <select id="hand"><option>右利き</option><option>左利き</option></select>
+    <label class="f" for="angle">撮影方向</label>
+    <select id="angle">
+      <option>横から（打球方向に対して真横）</option>
+      <option>後ろから</option>
+      <option>前から</option>
+      <option>斜めから</option>
+    </select>
+    <div style="margin-top:16px"><button class="btn ball" id="goBtn">AIで分析する</button></div>
+  </div>
+
+  <div id="status" hidden></div>
+  <div class="panel" id="framesPanel" hidden>
+    <h2>AIに見せたコマ</h2>
+    <div class="frames" id="frames"></div>
+  </div>
+  <div id="result"></div>
+</section>
+
+<section id="tab-history" hidden>
+  <div class="panel">
+    <h2>合計点の推移</h2>
+    <div id="trend"></div>
+  </div>
+  <div class="panel">
+    <h2>これまでの分析</h2>
+    <div id="histList"></div>
+    <div style="margin-top:12px;text-align:right"><button class="btn ghost" id="clearAll">記録をすべて削除</button></div>
+  </div>
+  <div id="histDetail"></div>
+</section>
+</main>
+
+<dialog id="keyDlg">
+  <h2>Anthropic APIキー</h2>
+  <p class="hint">キーはこの端末のブラウザにだけ保存されます。</p>
+  <input type="password" id="keyInput" placeholder="sk-ant-..." autocomplete="off">
+  <div class="row" style="margin-top:12px">
+    <button class="btn ghost" id="keyCancel">閉じる</button>
+    <button class="btn primary" style="flex:1" id="keySave">保存</button>
+  </div>
+</dialog>
+
+<script>
+'use strict';
+// ===== 設定 =====
+const MODEL = 'claude-sonnet-4-6';
+const KEY_NAME = 'anthropic_api_key';     // 他アプリと共有するAPIキーの保存名
+const HIST_KEY = 'tennis-coach-history';
+const FRAME_COUNT = 8;
+const FRAME_W = 512;
+const IS_CLAUDE = !!(window.storage && typeof window.storage.get === 'function');
+
+const ITEMS = [
+  ['グリップ', '握り方が安定し、打点に合っているか', 'グリップ'],
+  ['準備の速さ', 'ボールに対して早くラケットを準備できているか', '準備'],
+  ['ユニットターン', '肩と腰を一緒にひねって横向きを作れているか', 'ターン'],
+  ['フットワーク・スタンス', '打つ前に足を止め、適切なスタンスで構えているか', '足'],
+  ['テイクバック', 'ラケットの引きの大きさ・高さ・ループが適切か', '引き'],
+  ['打点', '体の前・適切な高さでボールを捉えているか', '打点'],
+  ['体の回転', '下半身→腰→肩の順で回転できているか', '回転'],
+  ['体重移動', '後ろ足から前足へ体重が移っているか', '体重'],
+  ['フォロースルー', 'ラケットを最後まで振り抜けているか', 'フォロー'],
+  ['バランス・戻り', '打った後に体勢が崩れず、次の準備に戻れるか', 'バランス']
+];
+
+// ===== 保存（claude.ai では window.storage、GitHub Pages では localStorage） =====
+const mem = {};
+async function loadData(key) {
+  if (IS_CLAUDE) {
+    try { const r = await window.storage.get(key, false); return r ? JSON.parse(r.value) : null; }
+    catch (e) { return null; }
+  }
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
+  catch (e) { return mem[key] ?? null; }
+}
+async function saveData(key, val) {
+  if (IS_CLAUDE) {
+    try { await window.storage.set(key, JSON.stringify(val), false); } catch (e) { console.error(e); }
+    return;
+  }
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { mem[key] = val; }
+}
+function getKey() { try { return localStorage.getItem(KEY_NAME) || ''; } catch (e) { return mem[KEY_NAME] || ''; } }
+function setKey(k) { try { localStorage.setItem(KEY_NAME, k); } catch (e) { mem[KEY_NAME] = k; } }
+
+// ===== 共通 =====
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtDate = iso => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+let history = [];
+
+function setStatus(msg, type) {
+  const s = $('status');
+  if (!msg) { s.hidden = true; return; }
+  s.hidden = false;
+  s.className = 'status' + (type === 'err' ? ' err' : '');
+  s.innerHTML = (type === 'busy' ? '<span class="dot"></span>' : '') + esc(msg);
+}
+function setSteps(active) {
+  [...$('steps').children].forEach((li, i) => li.classList.toggle('on', active.includes(i + 1)));
+}
+
+// ===== タブ =====
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-selected', x === b));
+  $('tab-analyze').hidden = b.dataset.tab !== 'analyze';
+  $('tab-history').hidden = b.dataset.tab !== 'history';
+  if (b.dataset.tab === 'history') renderHistory();
+}));
+
+// ===== APIキー設定（GitHub Pages用） =====
+if (!IS_CLAUDE) $('gearBtn').hidden = false;
+$('gearBtn').onclick = () => { $('keyInput').value = getKey(); $('keyDlg').showModal(); };
+$('keyCancel').onclick = () => $('keyDlg').close();
+$('keySave').onclick = () => { setKey($('keyInput').value.trim()); $('keyDlg').close(); };
+
+// ===== 動画読み込みと区間指定 =====
+const video = $('video');
+let segStart = 0, segEnd = 0;
+
+let curFile = null, triedDataURL = false, loadTimer = null;
+
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  curFile = f; triedDataURL = false;
+  $('editor').hidden = false;
+  $('result').innerHTML = '';
+  $('framesPanel').hidden = true;
+  $('segInfo').textContent = '読み込み中…';
+  setStatus('動画を読み込んでいます…', 'busy');
+  loadVideo(URL.createObjectURL(f));
+});
+
+function loadVideo(src) {
+  if (video.src && video.src.startsWith('blob:')) URL.revokeObjectURL(video.src);
+  clearTimeout(loadTimer);
+  video.src = src;
+  video.load();
+  loadTimer = setTimeout(fallbackLoad, 5000);
+}
+
+// 1回目（blob URL）で読めなかったときに、ファイルを直接読み込んでやり直す
+function fallbackLoad() {
+  clearTimeout(loadTimer);
+  if (video.videoWidth) return;
+  if (triedDataURL || !curFile) {
+    setStatus('この画面では動画を読み込めませんでした。写真アプリで数秒にトリミングしてから選び直すか、Safariで直接ページを開いて試してください。', 'err');
+    return;
+  }
+  triedDataURL = true;
+  if (curFile.size > 80 * 1024 * 1024) {
+    setStatus(`動画が大きすぎます（${Math.round(curFile.size / 1048576)}MB）。写真アプリで1スイング分（数秒）にトリミングしてから選び直してください。`, 'err');
+    return;
+  }
+  setStatus('別の方法で読み込み直しています…', 'busy');
+  const r = new FileReader();
+  r.onload = () => loadVideo(r.result);
+  r.onerror = () => setStatus('動画ファイルを読み込めませんでした。', 'err');
+  r.readAsDataURL(curFile);
+}
+video.addEventListener('error', () => { if (curFile) fallbackLoad(); });
+
+// コマ切り出し前に、映像が描画できる状態か確認する
+async function ensureReady() {
+  if (video.videoWidth && video.readyState >= 2) return;
+  try { await video.play(); video.pause(); } catch (e) {}
+  if (video.videoWidth && video.readyState >= 2) return;
+  await new Promise(res => {
+    const t = setTimeout(res, 4000);
+    video.addEventListener('loadeddata', () => { clearTimeout(t); res(); }, { once: true });
+  });
+}
+
+video.addEventListener('loadedmetadata', () => {
+  clearTimeout(loadTimer);
+  setStatus('');
+  const d = video.duration || 0;
+  $('scrub').max = d.toFixed(2);
+  segStart = 0; segEnd = d;
+  updateSeg();
+  // iOS で最初のコマを描画させるための一瞬再生
+  video.play().then(() => video.pause()).catch(() => {});
+});
+video.addEventListener('timeupdate', () => {
+  $('scrub').value = video.currentTime;
+  $('tnow').textContent = video.currentTime.toFixed(2) + 's';
+});
+$('scrub').addEventListener('input', e => { video.currentTime = Number(e.target.value); });
+const nudge = dt => { video.pause(); video.currentTime = Math.min(Math.max(0, video.currentTime + dt), video.duration || 0); };
+$('back1').onclick = () => nudge(-0.1);
+$('fwd1').onclick = () => nudge(0.1);
+$('setStart').onclick = () => { segStart = video.currentTime; if (segEnd <= segStart) segEnd = Math.min(video.duration, segStart + 1.5); updateSeg(); };
+$('setEnd').onclick = () => { segEnd = video.currentTime; if (segEnd <= segStart) segStart = Math.max(0, segEnd - 1.5); updateSeg(); };
+
+function updateSeg() {
+  const len = segEnd - segStart;
+  let warn = '';
+  if (len > 4) warn = '<br>⚠ 区間が長めです。1スイング（1〜2秒）に絞ると精度が上がります。';
+  $('segInfo').innerHTML = `分析する区間：<b>${segStart.toFixed(2)}s</b> 〜 <b>${segEnd.toFixed(2)}s</b>（${len.toFixed(2)}秒）${warn}`;
+}
+
+// ===== コマ切り出し =====
+function seekTo(t) {
+  return new Promise(resolve => {
+    let done = false;
+    const fin = () => { if (done) return; done = true; video.removeEventListener('seeked', fin); resolve(); };
+    video.addEventListener('seeked', fin);
+    setTimeout(fin, 2500);
+    video.currentTime = t;
+  });
+}
+async function extractFrames() {
+  await ensureReady();
+  video.pause();
+  const frames = [];
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) throw new Error('動画がまだ読み込めていません。動画の再生ボタンを一度押してから、もう一度「AIで分析する」を押してください。');
+  const scale = Math.min(1, FRAME_W / Math.max(vw, vh));
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(vw * scale); cv.height = Math.round(vh * scale);
+  const ctx = cv.getContext('2d');
+  let thumb = '';
+  for (let i = 0; i < FRAME_COUNT; i++) {
+    const t = Math.min(segStart + (segEnd - segStart) * i / (FRAME_COUNT - 1), Math.max(0, video.duration - 0.05));
+    await seekTo(t);
+    ctx.drawImage(video, 0, 0, cv.width, cv.height);
+    const url = cv.toDataURL('image/jpeg', 0.75);
+    frames.push({ url, b64: url.split(',')[1] });
+    if (i === Math.floor(FRAME_COUNT / 2)) {
+      const tc = document.createElement('canvas');
+      const ts = 160 / Math.max(cv.width, cv.height);
+      tc.width = Math.round(cv.width * ts); tc.height = Math.round(cv.height * ts);
+      tc.getContext('2d').drawImage(cv, 0, 0, tc.width, tc.height);
+      thumb = tc.toDataURL('image/jpeg', 0.6);
+    }
+  }
+  return { frames, thumb };
+}
+
+// ===== Claude API =====
+async function callClaude(content) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (!IS_CLAUDE) {
+    const key = getKey();
+    if (!key) { $('keyDlg').showModal(); throw new Error('APIキーが未設定です。⚙ APIキー から設定してください。'); }
+    headers['x-api-key'] = key;
+    headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
+  }
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers,
+    body: JSON.stringify({ model: MODEL, max_tokens: 1000, messages: [{ role: 'user', content }] })
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    if (res.status === 401) throw new Error('APIキーが正しくありません（401）。⚙ APIキー から確認してください。');
+    throw new Error(`AIの呼び出しに失敗しました（${res.status}）：${t.slice(0, 150)}`);
+  }
+  const data = await res.json();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  return parseJSON(text);
+}
+function parseJSON(text) {
+  const clean = text.replace(/```json|```/g, '').trim();
+  const a = clean.indexOf('{'), b = clean.lastIndexOf('}');
+  if (a < 0 || b < 0) throw new Error('AIの返答を読み取れませんでした。もう一度お試しください。');
+  try { return JSON.parse(clean.slice(a, b + 1)); }
+  catch (e) { throw new Error('AIの返答が途中で切れました。もう一度お試しください。'); }
+}
+
+// ===== プロンプト =====
+function promptScore(hand, angle) {
+  return `あなたは経験豊富なテニスコーチです。
+添付の${FRAME_COUNT}枚の画像は、1回のフォアハンドストロークを時系列順（1枚目→${FRAME_COUNT}枚目）に切り出したものです。
+プレーヤー：${hand}　撮影方向：${angle}
+
+次の10項目をそれぞれ1〜10点で採点してください（5点＝平均的な一般プレーヤー、8点以上＝上級者レベル）。
+${ITEMS.map((it, i) => `${i + 1}. ${it[0]}：${it[1]}`).join('\n')}
+
+ルール：
+- 画像で実際に確認できたことだけを根拠にする。
+- 画像から判断できない項目は score を5にし、comment を「判断困難：」で始めて理由を書く。
+- comment は各30字以内で具体的に。
+- 画像にフォアハンドを打つ人が写っていなければ isForehand を false にする。
+- 出力はJSONのみ。前置き・説明・マークダウンは禁止。
+
+出力形式：
+{"isForehand":true,"items":[{"name":"グリップ","score":6,"comment":"..."}],"summary":"全体の講評（60字以内）"}
+items には上記10項目すべてを同じ順番・同じ名前で入れること。`;
+}
+function promptAdvice(items, prev) {
+  const now = items.map(x => `${x.name} ${x.score}点（${x.comment}）`).join('\n');
+  let p = `あなたは経験豊富なテニスコーチです。あるプレーヤーのフォアハンドを10項目（各10点）で採点した結果です。
+
+【今回】
+${now}
+`;
+  if (prev) {
+    p += `
+【前回 ${fmtDate(prev.date)}】
+${prev.items.map(x => `${x.name} ${x.score}点`).join('、')}
+前回の改善点：${prev.improvements.map(x => x.title).join('／')}
+`;
+  }
+  p += `
+タスク：
+1. 今回の結果から、上達に最も効果が大きい改善点を3つ、優先度順に挙げる。title は15字以内、detail は50字以内（何をどう直すか）、drill は40字以内（一人でもできる練習方法）。
+`;
+  if (prev) {
+    p += `2. 前回と比べて上達したかを判定する。verdict は「上達」「横ばい」「後退」のいずれか。comment は60字以内。checked には前回の改善点それぞれについて、今回どうなったかを result「改善」「未改善」「判断不可」で示す。
+`;
+  }
+  p += `
+出力はJSONのみ。前置き・マークダウンは禁止。
+{"improvements":[{"title":"","detail":"","drill":""}],"progress":${prev ? '{"verdict":"上達","comment":"","checked":[{"title":"","result":"改善"}]}' : 'null'}}`;
+  return p;
+}
+
+// ===== 分析の実行 =====
+$('goBtn').onclick = async () => {
+  const btn = $('goBtn');
+  btn.disabled = true;
+  $('result').innerHTML = '';
+  try {
+    setStatus('動画からコマを切り出しています…', 'busy');
+    const { frames, thumb } = await extractFrames();
+    $('frames').innerHTML = frames.map((f, i) => `<img src="${f.url}" alt="コマ${i + 1}">`).join('');
+    $('framesPanel').hidden = false;
+
+    setStatus('AIがフォームを10項目で採点しています…（20〜40秒）', 'busy');
+    setSteps([1, 2]);
+    const hand = $('hand').value, angle = $('angle').value;
+    const content = frames.map(f => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.b64 } }));
+    content.push({ type: 'text', text: promptScore(hand, angle) });
+    const A = await callClaude(content);
+
+    if (A.isForehand === false) {
+      setStatus('フォアハンドを打っている人を確認できませんでした。区間や動画を変えてもう一度お試しください。', 'err');
+      return;
+    }
+    const got = Array.isArray(A.items) ? A.items : [];
+    const items = ITEMS.map((it, i) => {
+      const g = got.find(x => x && x.name === it[0]) || got[i] || {};
+      let s = Math.round(Number(g.score));
+      if (!(s >= 1 && s <= 10)) s = 5;
+      return { name: it[0], score: s, comment: String(g.comment || '') };
+    });
+    const total = items.reduce((a, x) => a + x.score, 0);
+    const prev = history[0] || null;
+
+    setStatus('改善点を考えています…', 'busy');
+    setSteps([1, 2, 3]);
+    const B = await callClaude([{ type: 'text', text: promptAdvice(items, prev) }]);
+
+    const rec = {
+      id: Date.now(), date: new Date().toISOString(), hand, angle,
+      items, total, summary: String(A.summary || ''),
+      improvements: (Array.isArray(B.improvements) ? B.improvements : []).slice(0, 3).map(x => ({
+        title: String(x.title || ''), detail: String(x.detail || ''), drill: String(x.drill || '')
+      })),
+      progress: prev && B.progress ? B.progress : null,
+      thumb
+    };
+    history.unshift(rec);
+    await saveData(HIST_KEY, history);
+
+    setStatus('');
+    $('result').innerHTML = renderResult(rec, prev) +
+      `<button class="btn primary" id="againBtn">練習したら、もう一度撮影して比べる</button>`;
+    $('againBtn').onclick = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); $('file').value = ''; };
+    setSteps(prev ? [1, 2, 3, 6] : [1, 2, 3]);
+    renderTheme();
+    $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    console.error(e);
+    setStatus(e.message || String(e), 'err');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// ===== 表示 =====
+function radarSVG(curr, prev) {
+  const S = 320, C = S / 2, R = 108, n = ITEMS.length;
+  const pt = (i, v) => {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / n;
+    return [C + Math.cos(a) * R * v / 10, C + Math.sin(a) * R * v / 10];
+  };
+  let g = '';
+  [2, 4, 6, 8, 10].forEach(v => {
+    g += `<polygon points="${ITEMS.map((_, i) => pt(i, v).join(',')).join(' ')}" fill="none" stroke="#d6dee9" stroke-width="1"/>`;
+  });
+  ITEMS.forEach((it, i) => {
+    const [x, y] = pt(i, 10), [lx, ly] = pt(i, 12.4);
+    g += `<line x1="${C}" y1="${C}" x2="${x}" y2="${y}" stroke="#d6dee9"/>`;
+    g += `<text x="${lx}" y="${ly}" font-size="12" text-anchor="middle" dominant-baseline="middle" fill="#3c4b61">${it[2]}</text>`;
+  });
+  if (prev) g += `<polygon points="${prev.map((x, i) => pt(i, x.score).join(',')).join(' ')}" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/>`;
+  g += `<polygon points="${curr.map((x, i) => pt(i, x.score).join(',')).join(' ')}" fill="rgba(221,240,58,.55)" stroke="#1E4D8C" stroke-width="2.5"/>`;
+  return `<svg class="radar" viewBox="0 0 ${S} ${S}" role="img" aria-label="10項目のレーダーチャート">${g}</svg>`;
+}
+function diffSpan(d) {
+  if (d > 0) return `<span class="up">▲${d}</span>`;
+  if (d < 0) return `<span class="down">▼${-d}</span>`;
+  return `<span class="same">±0</span>`;
+}
+function renderResult(rec, prev) {
+  const pmap = {};
+  if (prev) prev.items.forEach(x => { pmap[x.name] = x.score; });
+  let h = `<div class="board">
+    <div class="lbl">${fmtDate(rec.date)}　フォアハンド総合</div>
+    <div class="num">${rec.total}<span> / 100</span></div>
+    ${prev ? `<div class="diff">前回 ${prev.total} → ${diffSpan(rec.total - prev.total)}</div>` : ''}
+    ${rec.summary ? `<div class="sum">${esc(rec.summary)}</div>` : ''}
+  </div>`;
+
+  if (rec.progress) {
+    const v = rec.progress.verdict || '横ばい';
+    const cls = v === '上達' ? 'v-up' : v === '後退' ? 'v-down' : 'v-flat';
+    h += `<div class="panel" style="margin-top:14px"><h2>前回からの上達判定</h2>
+      <span class="verdict ${cls}">${esc(v)}</span>
+      <p style="margin:4px 0 8px">${esc(rec.progress.comment)}</p>
+      ${(rec.progress.checked || []).map(c => `<div class="chk">${c.result === '改善' ? '✅' : c.result === '未改善' ? '🔁' : '❔'} ${esc(c.title)}：${esc(c.result)}</div>`).join('')}
+    </div>`;
+  }
+
+  h += `<div class="panel" style="margin-top:14px"><h2>10項目の採点</h2>${radarSVG(rec.items, prev ? prev.items : null)}
+    ${prev ? `<div class="legend"><span><i style="background:#1E4D8C"></i>今回</span><span><i style="background:#94a3b8"></i>前回</span></div>` : ''}
+    ${rec.items.map(x => `<div class="item">
+      <div class="h"><span class="nm">${esc(x.name)}</span>
+      <span class="sc">${x.score}${prev && pmap[x.name] != null ? `<small>${diffSpan(x.score - pmap[x.name])}</small>` : ''}</span></div>
+      <div class="bar">${Array.from({ length: 10 }, (_, i) => `<i class="${i < x.score ? 'f' : ''}"></i>`).join('')}</div>
+      <p>${esc(x.comment)}</p></div>`).join('')}
+  </div>`;
+
+  h += `<div class="panel"><h2>改善点（優先度順）</h2>
+    ${rec.improvements.map((x, i) => `<div class="imp"><h3><em>${i + 1}</em>${esc(x.title)}</h3>
+      <p>${esc(x.detail)}</p><p class="drill">練習：${esc(x.drill)}</p></div>`).join('') || '<p class="empty">改善点を取得できませんでした。</p>'}
+    <p class="hint">AIの採点は同じ動画でも±1点ほどぶれます。比べるときは同じ角度・距離で撮影してください。</p>
+  </div>`;
+  return h;
+}
+function renderTheme() {
+  const t = $('theme');
+  const last = history[0];
+  if (!last || !last.improvements.length) { t.hidden = true; setSteps([1]); return; }
+  t.hidden = false;
+  t.innerHTML = `<h2>いまの練習テーマ（${fmtDate(last.date)}・${last.total}点）</h2>
+    <ol>${last.improvements.map(x => `<li>${esc(x.title)}</li>`).join('')}</ol>`;
+  if (!$('result').innerHTML) setSteps([4, 5]);
+}
+function renderHistory() {
+  const list = $('histList');
+  $('histDetail').innerHTML = '';
+  if (!history.length) {
+    list.innerHTML = '<p class="empty">まだ記録がありません。「分析する」から最初の動画を分析しましょう。</p>';
+    $('trend').innerHTML = '<p class="empty">2回以上分析すると推移が表示されます。</p>';
+    return;
+  }
+  list.innerHTML = history.map((r, i) => {
+    const prev = history[i + 1];
+    return `<div class="hist" data-i="${i}">
+      ${r.thumb ? `<img src="${r.thumb}" alt="">` : '<img alt="">'}
+      <div class="meta">${fmtDate(r.date)}<br>${r.progress ? esc(r.progress.verdict) : '初回'}</div>
+      <div class="tot">${r.total}${prev ? ` <small style="font-size:.85rem">${diffSpan(r.total - prev.total)}</small>` : ''}</div>
+      <button class="del" data-del="${i}" aria-label="削除">✕</button></div>`;
+  }).join('');
+  list.querySelectorAll('.hist').forEach(el => el.addEventListener('click', e => {
+    if (e.target.dataset.del != null) return;
+    const i = Number(el.dataset.i);
+    $('histDetail').innerHTML = renderResult(history[i], history[i + 1] || null);
+    $('histDetail').scrollIntoView({ behavior: 'smooth' });
+  }));
+  list.querySelectorAll('.del').forEach(b => b.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (!confirm('この記録を削除しますか？')) return;
+    history.splice(Number(b.dataset.del), 1);
+    await saveData(HIST_KEY, history);
+    renderHistory(); renderTheme();
+  }));
+  // 推移グラフ
+  const pts = history.slice().reverse();
+  if (pts.length < 2) { $('trend').innerHTML = '<p class="empty">2回以上分析すると推移が表示されます。</p>'; return; }
+  const W = 320, H = 140, P = 24;
+  const xs = i => P + (W - 2 * P) * i / (pts.length - 1);
+  const ys = v => H - P - (H - 2 * P) * v / 100;
+  const line = pts.map((r, i) => `${xs(i)},${ys(r.total)}`).join(' ');
+  $('trend').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%" role="img" aria-label="合計点の推移">
+    <line x1="${P}" y1="${ys(50)}" x2="${W - P}" y2="${ys(50)}" stroke="#d6dee9" stroke-dasharray="4 4"/>
+    <polyline points="${line}" fill="none" stroke="#1E4D8C" stroke-width="2.5"/>
+    ${pts.map((r, i) => `<circle cx="${xs(i)}" cy="${ys(r.total)}" r="5" fill="#DDF03A" stroke="#1E4D8C" stroke-width="2"/>
+      <text x="${xs(i)}" y="${ys(r.total) - 10}" font-size="11" text-anchor="middle" fill="#0F1E33">${r.total}</text>`).join('')}
+  </svg>`;
+}
+$('clearAll').onclick = async () => {
+  if (!confirm('すべての記録を削除しますか？')) return;
+  history = [];
+  await saveData(HIST_KEY, history);
+  renderHistory(); renderTheme();
+};
+
+// ===== 起動 =====
+(async () => {
+  history = (await loadData(HIST_KEY)) || [];
+  renderTheme();
+  if (!history.length) setSteps([1]);
+})();
+</script>
+</body>
+</html>
